@@ -224,14 +224,14 @@ class DrunkSystem : EventHandler
 	void UpdateAxis(Actor mo, out DriftAxis axis, double intensity, bool isHorizontal)
 	{
 		if (!axis.active)
-			StartAxis(axis); // теперь axis передается по ссылке
+			StartAxis(axis);
 
 		double progress = (level.time - axis.startTime) / double(axis.duration);
 
 		if (progress >= 1.0)
 		{
 			axis.direction = -axis.direction;
-			StartAxis(axis); // и здесь тоже по ссылке
+			StartAxis(axis);
 			progress = 0.0;
 		}
 
