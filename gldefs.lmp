@@ -1,0 +1,13 @@
+HardwareShader PostProcess Scene
+{
+	Name "drunknessshader"
+	Shader "shaders/PostProcess/drunkness.fp" 330
+	Uniform float ViewTimer	
+	Uniform float DrunkLevel
+	Uniform float RandomSeed
+	Uniform float DV_OffsetX
+	Uniform float DV_OffsetY
+    Uniform float DV_Progress
+}
+
+

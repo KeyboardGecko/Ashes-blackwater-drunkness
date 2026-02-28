@@ -1,0 +1,244 @@
+class drunkness : Inventory
+{
+    Default
+    {
+        Inventory.MaxAmount 100;
+        Inventory.InterHubAmount 0;
+    }
+}
+class DrunkSystem : EventHandler
+{
+    int lastDrunkLevel;
+    float dvOffsetX, dvOffsetY;
+    float currentAmplitude;
+    float randomSeed;
+	int nextEffectTime;
+	
+    bool effectActive;
+    int effectStartTime;
+    int effectDuration;
+
+    bool shaderEnabled;
+
+    int detoxInterval;
+    int nextDetoxTime;
+
+    override void OnRegister()
+    {
+        lastDrunkLevel = 0;
+        dvOffsetX = 0;
+        dvOffsetY = 0;
+        currentAmplitude = 0;
+        randomSeed = 0;
+
+        detoxInterval = 105;
+        nextDetoxTime = level.time + detoxInterval;
+
+        effectActive = false;
+        shaderEnabled = false;
+    }
+
+	override void WorldTick()
+	{
+		let p = players[consoleplayer];
+		if (!p || !p.mo) return;
+
+		if (level.time >= nextDetoxTime)
+		{
+			ReduceDrunkLevel(p.mo);
+			nextDetoxTime = level.time + detoxInterval;
+		}
+
+		int currentDrunk = p.mo.CountInv("drunkness");
+		
+		// camera driftin
+		UpdateCameraDrift(p.mo, currentDrunk);
+
+		if (effectActive && level.time > effectStartTime + effectDuration)
+		{
+			effectActive = false;
+			dvOffsetX = 0;
+			dvOffsetY = 0;
+		}
+
+		if (!effectActive && currentDrunk >= 20 && level.time >= nextEffectTime)
+		{
+			TriggerDoubleVision(currentDrunk);
+
+			double intensity = clamp((currentDrunk - 20.0) / 50.0, 0.0, 1.0);
+
+			int maxPause = 210; // 6 secs
+
+			double pauseFactor = (1.0 - intensity);
+			pauseFactor *= pauseFactor;
+
+			int pause = int(maxPause * pauseFactor);
+
+			pause += Random(-5, 10);
+			if (pause < 0) pause = 0;
+
+			nextEffectTime = level.time + effectDuration + pause;
+		}
+
+		bool shouldEnable = effectActive;
+
+		if (shouldEnable && !shaderEnabled)
+		{
+			PPShader.SetEnabled("drunknessshader", true);
+			shaderEnabled = true;
+		}
+		else if (!shouldEnable && shaderEnabled)
+		{
+			PPShader.SetEnabled("drunknessshader", false);
+			shaderEnabled = false;
+		}
+	}
+	
+	void TriggerDoubleVision(int drunk)
+	{
+		// aww yeah that's the stuff
+		randomSeed = frandom(0.0, 1.0);
+
+		double baseAmplitude;
+		if (drunk < 30) baseAmplitude = 0.01;
+		else if (drunk < 40) baseAmplitude = 0.02;
+		else if (drunk < 50) baseAmplitude = 0.03;
+		else if (drunk < 70) baseAmplitude = 0.04;
+		else baseAmplitude = 0.05;
+
+		currentAmplitude = baseAmplitude;
+
+		dvOffsetX = frandom(-currentAmplitude, currentAmplitude);
+		dvOffsetY = frandom(-currentAmplitude, currentAmplitude);
+
+		effectDuration = Random(105, 175);
+		effectStartTime = level.time;
+		effectActive = true;
+	}
+	
+    void ReduceDrunkLevel(Actor mo)
+    {
+        int currentDrunk = mo.CountInv("drunkness");
+
+        if (currentDrunk > 0)
+        {
+            mo.TakeInventory("drunkness", 1);
+			// uncomment if you need debug counter
+			Console.Printf("Drunkness: %d", currentDrunk);
+
+            if (currentDrunk <= 1)
+            {
+                effectActive = false;
+                dvOffsetX = 0;
+                dvOffsetY = 0;
+            }
+        }
+    }
+
+    override void RenderOverlay(RenderEvent e)
+    {
+        if (!shaderEnabled)
+            return;
+
+        let p = players[consoleplayer];
+        if (!p || !p.mo) return;
+
+        int drunk = p.mo.CountInv("drunkness");
+
+        double time = level.time / 35.0;
+
+        float progress = 0.0;
+        if (effectDuration > 0)
+            progress = clamp(double(level.time - effectStartTime) / effectDuration, 0.0, 1.0);
+
+        PPShader.SetUniform1f("drunknessshader", "ViewTimer", time);
+        PPShader.SetUniform1f("drunknessshader", "DrunkLevel", drunk);
+        PPShader.SetUniform1f("drunknessshader", "RandomSeed", randomSeed);
+        PPShader.SetUniform1f("drunknessshader", "DV_OffsetX", dvOffsetX);
+        PPShader.SetUniform1f("drunknessshader", "DV_OffsetY", dvOffsetY);
+        PPShader.SetUniform1f("drunknessshader", "DV_Progress", progress);
+    }
+
+/////////////////////////////////////////////////////////////////////////////
+//////////////////// Camera drift. For fun. /////////////////////////////////
+//////////////////// Works when drunkness > 40. /////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+	struct DriftAxis
+	{
+		double direction;
+		int duration;
+		int startTime;
+		int rampTime;
+		bool active;
+	}
+
+	DriftAxis horizontal;
+	DriftAxis vertical;
+
+	void UpdateCameraDrift(Actor mo, int drunk)
+	{
+		if (drunk < 40)
+		{
+			if (horizontal.active || vertical.active)
+			{
+				mo.Angle *= 0.9;
+				mo.Pitch *= 0.9;
+			}
+
+			horizontal.active = false;
+			vertical.active = false;
+			return;
+		}
+
+		double intensity = drunk / 100.0;
+
+		UpdateAxis(mo, horizontal, intensity, true);
+		UpdateAxis(mo, vertical, intensity, false);
+	}
+
+	void UpdateAxis(Actor mo, DriftAxis axis, double intensity, bool isHorizontal)
+	{
+		if (!axis.active)
+			StartAxis(axis);
+
+		double progress = (level.time - axis.startTime) / double(axis.duration);
+
+		if (progress >= 1.0)
+		{
+			axis.direction = -axis.direction;
+			StartAxis(axis);
+			progress = 0.0;
+		}
+
+		double ramp = (level.time - axis.startTime) / double(axis.rampTime);
+		if (ramp < 0) ramp = 0;
+		if (ramp > 1) ramp = 1;
+
+		ramp = ramp * ramp;
+
+		double slowdown = 1.0 - progress;
+		if (slowdown < 0) slowdown = 0;
+
+		double speed = ramp * slowdown * intensity * (isHorizontal ? 0.8 : 0.7);
+
+		if (isHorizontal)
+			mo.Angle += axis.direction * speed;
+		else
+			mo.Pitch += axis.direction * speed;
+	}
+
+	void StartAxis(DriftAxis axis)
+	{
+		axis.duration = 50 + Random(0, 70);
+		axis.startTime = level.time;
+		axis.rampTime = 15 + Random(0, 30);
+		axis.active = true;
+
+		if (axis.direction == 0)
+			axis.direction = RandomPick(-1.0, 1.0);
+	}
+
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+}
