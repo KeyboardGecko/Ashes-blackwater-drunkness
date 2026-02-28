@@ -252,7 +252,7 @@ class DrunkSystem : EventHandler
 			mo.Pitch += axis.direction * speed;
 	}
 
-	void StartAxis(out DriftAxis axis) // добавляем out здесь
+	void StartAxis(out DriftAxis axis)
 	{
 		axis.duration = 50 + Random(0, 70);
 		axis.startTime = level.time;
