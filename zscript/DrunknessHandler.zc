@@ -42,7 +42,13 @@ class DrunkSystem : EventHandler
 	{
 		let p = players[consoleplayer];
 		if (!p || !p.mo) return;
-
+		
+		if (p.mo.health <= 0)
+		{
+			ResetDrunkState(p.mo);
+			return;
+		}
+		
 		if (level.time >= nextDetoxTime)
 		{
 			ReduceDrunkLevel(p.mo);
@@ -124,7 +130,7 @@ class DrunkSystem : EventHandler
         {
             mo.TakeInventory("drunkness", 1);
 			// uncomment if you need debug counter
-			Console.Printf("Drunkness: %d", currentDrunk);
+// 			Console.Printf("Drunkness: %d", currentDrunk);
 
             if (currentDrunk <= 1)
             {
@@ -134,6 +140,24 @@ class DrunkSystem : EventHandler
             }
         }
     }
+	
+	void ResetDrunkState(Actor mo)
+	{
+		if (!mo) return;
+		// no drunkness for you if you're dead
+
+		mo.TakeInventory("drunkness", 9999);
+
+		dvOffsetX = 0;
+		dvOffsetY = 0;
+		currentAmplitude = 0;
+
+		effectActive = false;
+
+		PPShader.SetEnabled("drunknessshader", false);
+		shaderEnabled = false;
+
+	}
 
     override void RenderOverlay(RenderEvent e)
     {
